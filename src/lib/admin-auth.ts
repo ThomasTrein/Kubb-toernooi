@@ -11,7 +11,7 @@ import { auth } from "./firebase";
 const SESSION_KEY = "kubb-admin-authenticated";
 
 export function checkPin(pin: string): boolean {
-  const expected = process.env.ADMIN_PIN;
+  const expected = process.env.NEXT_PUBLIC_ADMIN_PIN;
   return !!expected && pin === expected;
 }
 
