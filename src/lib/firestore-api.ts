@@ -21,7 +21,10 @@ import {
   buildPoolMatches,
   calculatePoolStandings,
   getOverallSeeding,
-  buildKnockoutBracket,
+  getRankGroupTeams,
+  getClassificationRankIndexes,
+  scheduleBracketGroups,
+  type BracketGroup,
 } from "./scheduling";
 
 const tournamentsCol = () => collection(db, "tournaments");
@@ -168,7 +171,12 @@ export async function generatePoolsAndSchedule(tId: string, teams: Team[], setti
 
 /**
  * Genereert de knock-outfase op basis van de huidige poulestanden.
- * Verwijdert een eerder gegenereerde knock-out fase van dit toernooi.
+ * Verwijdert een eerder gegenereerde knock-out fase (en kruisfinale-brackets) van dit toernooi.
+ *
+ * Volgorde: eerst worden alle kruisfinale-brackets voor niet-gekwalificeerde poule-rangen
+ * (bv. "alle 3des", "alle 4des") gepland — die lopen onderling parallel over de banen. Pas
+ * daarna, wanneer die volledig ingepland zijn, start de hoofd-knockout voor de gekwalificeerde
+ * teams.
  */
 export async function generateKnockoutStage(
   tId: string,
@@ -186,10 +194,38 @@ export async function generateKnockoutStage(
     Math.min(settings.qualifiersPerPool, ...pools.map((p) => p.teamIds.length))
   );
   const seeding = getOverallSeeding(pools, standingsByPool, qualifiersPerPool);
-  const { matches: draftMatches } = buildKnockoutBracket(seeding, settings);
+
+  const startTime = new Date(settings.knockoutStartTime || settings.poolsStartTime);
+
+  // Kruisfinale-groepen voor elke niet-gekwalificeerde poule-rang (bv. alle 3des, alle 4des, ...).
+  const classificationGroups: BracketGroup[] = getClassificationRankIndexes(pools, qualifiersPerPool)
+    .map((rankIndex) => ({
+      seededTeamIds: getRankGroupTeams(pools, standingsByPool, rankIndex),
+      classificationRank: rankIndex + 1,
+      labelPrefix: `Kruisfinale om plaats ${rankIndex + 1}`,
+    }))
+    .filter((g) => g.seededTeamIds.length > 0);
+
+  const { matches: classificationMatches, slotsUsed } = scheduleBracketGroups(
+    classificationGroups,
+    settings,
+    startTime,
+    0,
+    "class-"
+  );
+
+  const { matches: mainMatches } = scheduleBracketGroups(
+    [{ seededTeamIds: seeding, classificationRank: null, labelPrefix: null }],
+    settings,
+    startTime,
+    slotsUsed,
+    "main-"
+  );
+
+  const draftMatches = [...classificationMatches, ...mainMatches];
 
   const batch = writeBatch(db);
-  const oldKnockout = matches.filter((m) => m.stage === "knockout");
+  const oldKnockout = matches.filter((m) => m.stage === "knockout" || m.stage === "classification");
   oldKnockout.forEach((m) => batch.delete(doc(db, "tournaments", tId, "matches", m.id)));
 
   const tempIdToRealId = new Map<string, string>();
@@ -250,4 +286,19 @@ export async function clearMatchResult(tId: string, match: Match) {
 
 export async function updateMatchSchedule(tId: string, matchId: string, startTime: string, lane: number) {
   await updateDoc(doc(db, "tournaments", tId, "matches", matchId), { startTime, lane });
+}
+
+/**
+ * Wijzigt de starttijd van een volledig tijdslot in één keer: alle wedstrijden die op
+ * `oldStartTime` gepland staan, worden verplaatst naar `newStartTime`. Andere tijdsloten
+ * blijven ongewijzigd.
+ */
+export async function updateTimeSlot(tId: string, matches: Match[], oldStartTime: string, newStartTime: string) {
+  const affected = matches.filter((m) => m.startTime === oldStartTime);
+  if (affected.length === 0) return;
+  const batch = writeBatch(db);
+  affected.forEach((m) => {
+    batch.update(doc(db, "tournaments", tId, "matches", m.id), { startTime: newStartTime });
+  });
+  await batch.commit();
 }

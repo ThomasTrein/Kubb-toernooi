@@ -9,6 +9,13 @@ knock-out bracket bekijken, live bijgewerkt terwijl jij als beheerder uitslagen 
 - **Poulefase + knock-out**: teams spelen eerst 1x tegen elkaar in poules, daarna gaan de
   beste teams door naar een knock-out bracket (met automatische "byes" als het aantal
   gekwalificeerde teams geen macht van 2 is).
+- **Kruisfinales voor een volledige eindranglijst**: teams die niet doorstromen naar de
+  hoofd-knockout spelen niet zomaar niets meer. Alle teams die 3e werden in hun poule spelen
+  een eigen kruisfinale-bracket tegen elkaar ("alle 3des"), alle 4des spelen een eigen
+  kruisfinale-bracket ("alle 4des"), enzovoort. Zo krijgt elk team uiteindelijk een plaats in
+  één volledige eindranglijst, niet enkel de gekwalificeerde teams. Deze kruisfinales worden
+  automatisch mee gegenereerd bij het genereren van de knock-out fase, spelen eerst
+  (gelijktijdig met elkaar, over de banen verdeeld) en pas daarna start de hoofd-knockout.
 - **Alles instelbaar**: aantal poules, aantal doorstromers per poule, aantal kubb-banen,
   wedstrijdduur, starttijden en punten per overwinning stel je zelf in per toernooi.
 - **Automatische schemagenerator**: poule-indeling en wedstrijdschema (tijd + baan) worden
@@ -173,6 +180,21 @@ volgorde wordt gebruikt voor een standaard toernooi-seeding (sterkste tegen zwak
 het aantal gekwalificeerde teams geen macht van 2 is (bv. 6 of 10), krijgen de
 bestgeplaatste teams automatisch een bye (vrije doorgang) in de eerste ronde(s).
 
+### Hoe de kruisfinales en de eindranglijst werken
+
+Voor elke poule-rang die niet meer kwalificeert voor de hoofd-knockout (bv. rang 3 en 4 bij
+2 doorstromers per poule) wordt automatisch een aparte kruisfinale-bracket gegenereerd met
+alle teams die op die rang stonden, over alle poules heen (geseed op punten → kubbs, net als
+de hoofd-knockout-seeding). Poules met minder teams leveren gewoon geen kandidaat voor de
+hogere rangen. Deze kruisfinale-brackets spelen eerst en gelijktijdig met elkaar (over de
+beschikbare banen verdeeld); pas als ze allemaal ingepland zijn start de hoofd-knockout.
+
+De volledige eindranglijst (zichtbaar onderaan het knock-out-tabblad, zowel bij beheer als op
+de publieke pagina) volgt daarna deze volgorde: eerst de plaatsen uit de hoofd-knockout, dan
+het volledige blok van de rang-3-kruisfinale, dan rang-4, enzovoort. Teams die in dezelfde
+ronde verliezen (bv. beide halve-finaleverliezers) delen een plaatsenband (bv. "5e-8e") —
+er worden geen aparte troostwedstrijden gespeeld.
+
 ---
 
 ## 4. Deployen op Netlify (voorbeeld)
@@ -213,6 +235,7 @@ npm run dev             # ontwikkelserver starten
 npm run build           # productie-build maken (ook gebruikt door Netlify)
 npm run lint            # code controleren met ESLint
 npm run test:scheduling # test de poule-/schema-/bracketlogica los van de UI
+npm run test:classification # test de kruisfinale-/eindranglijstlogica los van de UI
 ```
 
 ## Projectstructuur
@@ -225,14 +248,16 @@ src/
     admin/layout.tsx       PIN-gate voor het beheergedeelte
     admin/page.tsx         Toernooien aanmaken/overzicht
     admin/[id]/page.tsx    Beheer van één toernooi (instellingen, teams, schema, uitslagen)
-  components/              Herbruikbare UI-onderdelen (standen, schema, bracket, ...)
+  components/              Herbruikbare UI-onderdelen (standen, schema, bracket, eindranglijst, ...)
   lib/
     types.ts               Gedeelde TypeScript-types
-    scheduling.ts           Poule-indeling, schemabouw, standenberekening, bracketlogica
+    scheduling.ts           Poule-indeling, schemabouw, standenberekening, bracket- en
+                            kruisfinale-logica, eindranglijstberekening
     firestore-api.ts        Alle Firestore lees-/schrijffuncties
     firebase.ts             Firebase-initialisatie
     admin-auth.ts            PIN-login logica
-scripts/test-scheduling.ts  Los testscript voor de kernlogica (zie npm run test:scheduling)
+scripts/test-scheduling.ts  Los testscript voor de poule-/schema-/hoofdbracketlogica
+scripts/test-classification.ts  Los testscript voor de kruisfinale-/eindranglijstlogica
 firestore.rules             Firestore security rules
 netlify.toml                Netlify build-configuratie
 ```

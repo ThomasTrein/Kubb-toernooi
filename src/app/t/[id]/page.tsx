@@ -3,11 +3,13 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { subscribeTournament, subscribeTeams, subscribePools, subscribeMatches } from "@/lib/firestore-api";
-import type { Tournament, Team, Pool, Match } from "@/lib/types";
+import type { Tournament, Team, Pool, Match, Standing } from "@/lib/types";
+import { calculatePoolStandings } from "@/lib/scheduling";
 import StandingsTable from "@/components/StandingsTable";
 import ScheduleList from "@/components/ScheduleList";
 import LiveLanes from "@/components/LiveLanes";
 import BracketView from "@/components/BracketView";
+import FinalRankingTable from "@/components/FinalRankingTable";
 
 type Tab = "standen" | "schema" | "live" | "bracket";
 
@@ -37,6 +39,14 @@ export default function PublicTournamentPage() {
 
   const poolMatches = matches.filter((m) => m.stage === "pool");
   const knockoutMatches = matches.filter((m) => m.stage === "knockout");
+  const classificationMatches = matches.filter((m) => m.stage === "classification");
+  const classificationRanks = Array.from(
+    new Set(classificationMatches.map((m) => m.classificationRank).filter((r): r is number => !!r))
+  ).sort((a, b) => a - b);
+  const standingsByPool: Record<string, Standing[]> = {};
+  for (const pool of pools) {
+    standingsByPool[pool.id] = calculatePoolStandings(pool.teamIds, poolMatches, tournament.settings);
+  }
 
   const tabs: { key: Tab; label: string }[] = [
     { key: "standen", label: "Poules & standen" },
@@ -105,7 +115,27 @@ export default function PublicTournamentPage() {
         />
       )}
 
-      {tab === "bracket" && <BracketView matches={knockoutMatches} teams={teams} />}
+      {tab === "bracket" && (
+        <div className="flex flex-col gap-6">
+          {classificationRanks.map((rank) => (
+            <div key={rank} className="flex flex-col gap-2">
+              <h2 className="font-bold text-lg text-[var(--color-wood)]">Kruisfinale om plaats {rank}</h2>
+              <BracketView matches={classificationMatches.filter((m) => m.classificationRank === rank)} teams={teams} />
+            </div>
+          ))}
+          <div className="flex flex-col gap-2">
+            <h2 className="font-bold text-lg text-[var(--color-wood)]">Hoofd-knockout</h2>
+            <BracketView matches={knockoutMatches} teams={teams} />
+          </div>
+          <FinalRankingTable
+            pools={pools}
+            standingsByPool={standingsByPool}
+            qualifiersPerPool={tournament.settings.qualifiersPerPool}
+            matches={matches}
+            teams={teams}
+          />
+        </div>
+      )}
     </div>
   );
 }

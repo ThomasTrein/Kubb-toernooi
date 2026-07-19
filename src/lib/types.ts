@@ -33,15 +33,18 @@ export interface Pool {
   teamIds: string[];
 }
 
-export type MatchStage = "pool" | "knockout";
+export type MatchStage = "pool" | "knockout" | "classification";
 export type NextMatchSlot = "A" | "B";
 
 export interface Match {
   id: string;
   stage: MatchStage;
   poolId?: string | null;
+  // Voor stage "classification": de poule-rang (1-gebaseerd, bv. 3 voor "alle 3des") die deze
+  // kruisfinale-bracket vertegenwoordigt. Null/undefined voor "pool" en "knockout" wedstrijden.
+  classificationRank?: number | null;
   round: number; // volgnummer van de ronde binnen de fase (1-gebaseerd)
-  roundLabel?: string | null; // bv. "Kwartfinale", "Halve finale", "Finale"
+  roundLabel?: string | null; // bv. "Kwartfinale", "Halve finale", "Finale", of "Kruisfinale om plaats 3 — Finale"
   lane: number; // baannummer (1-gebaseerd)
   startTime: string; // ISO datetime
   teamAId: string | null; // null = nog niet bekend (wacht op vorige ronde) of bye

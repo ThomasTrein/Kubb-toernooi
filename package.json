@@ -10,7 +10,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:scheduling": "tsx scripts/test-scheduling.ts"
+    "test:scheduling": "tsx scripts/test-scheduling.ts",
+    "test:classification": "tsx scripts/test-classification.ts"
   },
   "dependencies": {
     "firebase": "^12.16.0",

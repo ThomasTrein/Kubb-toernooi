@@ -12,14 +12,17 @@ import {
   deleteTournament,
   renameTournament,
 } from "@/lib/firestore-api";
-import type { Tournament, Team, Pool, Match } from "@/lib/types";
+import type { Tournament, Team, Pool, Match, Standing } from "@/lib/types";
+import { calculatePoolStandings } from "@/lib/scheduling";
 import SettingsForm from "@/components/SettingsForm";
 import TeamEditor from "@/components/TeamEditor";
 import StandingsTable from "@/components/StandingsTable";
 import ResultEntryRow from "@/components/ResultEntryRow";
 import BracketView from "@/components/BracketView";
+import TimeSlotEditor from "@/components/TimeSlotEditor";
+import FinalRankingTable from "@/components/FinalRankingTable";
 
-type Tab = "instellingen" | "teams" | "schema" | "knockout";
+type Tab = "instellingen" | "teams" | "schema" | "knockout" | "tijden";
 
 export default function AdminTournamentPage() {
   const params = useParams<{ id: string }>();
@@ -49,7 +52,16 @@ export default function AdminTournamentPage() {
 
   const poolMatches = matches.filter((m) => m.stage === "pool");
   const knockoutMatches = matches.filter((m) => m.stage === "knockout");
+  const classificationMatches = matches.filter((m) => m.stage === "classification");
   const poolNameById = new Map(pools.map((p) => [p.id, p.name]));
+
+  const standingsByPool: Record<string, Standing[]> = {};
+  for (const pool of pools) {
+    standingsByPool[pool.id] = calculatePoolStandings(pool.teamIds, poolMatches, tournament!.settings);
+  }
+  const classificationRanks = Array.from(
+    new Set(classificationMatches.map((m) => m.classificationRank).filter((r): r is number => !!r))
+  ).sort((a, b) => a - b);
 
   async function handleGenerateSchedule() {
     if (
@@ -68,7 +80,7 @@ export default function AdminTournamentPage() {
 
   async function handleGenerateKnockout() {
     if (
-      knockoutMatches.length > 0 &&
+      (knockoutMatches.length > 0 || classificationMatches.length > 0) &&
       !confirm("Er bestaat al een knock-out fase. Opnieuw genereren overschrijft dit volledig. Doorgaan?")
     ) {
       return;
@@ -92,6 +104,7 @@ export default function AdminTournamentPage() {
     { key: "teams", label: `Teams (${teams.length})` },
     { key: "schema", label: "Schema & uitslagen" },
     { key: "knockout", label: "Knock-out" },
+    { key: "tijden", label: "Tijden" },
   ];
 
   return (
@@ -169,14 +182,52 @@ export default function AdminTournamentPage() {
           {pools.length === 0 && (
             <p className="text-sm text-[var(--foreground)]/60">Genereer eerst de poulefase.</p>
           )}
-          <BracketView matches={knockoutMatches} teams={teams} />
+
+          {classificationRanks.map((rank) => {
+            const rankMatches = classificationMatches.filter((m) => m.classificationRank === rank);
+            return (
+              <div key={rank} className="flex flex-col gap-2">
+                <h3 className="font-bold text-[var(--color-wood)]">Kruisfinale om plaats {rank}</h3>
+                <BracketView matches={rankMatches} teams={teams} />
+                <div className="flex flex-col gap-2">
+                  {rankMatches
+                    .sort((a, b) => a.round - b.round || a.lane - b.lane)
+                    .map((m) => (
+                      <ResultEntryRow key={m.id} tId={tId} match={m} teams={teams} />
+                    ))}
+                </div>
+              </div>
+            );
+          })}
+
           <div className="flex flex-col gap-2">
-            {knockoutMatches
-              .sort((a, b) => a.round - b.round || a.lane - b.lane)
-              .map((m) => (
-                <ResultEntryRow key={m.id} tId={tId} match={m} teams={teams} />
-              ))}
+            <h3 className="font-bold text-[var(--color-wood)]">Hoofd-knockout</h3>
+            <BracketView matches={knockoutMatches} teams={teams} />
+            <div className="flex flex-col gap-2">
+              {knockoutMatches
+                .sort((a, b) => a.round - b.round || a.lane - b.lane)
+                .map((m) => (
+                  <ResultEntryRow key={m.id} tId={tId} match={m} teams={teams} />
+                ))}
+            </div>
           </div>
+
+          <FinalRankingTable
+            pools={pools}
+            standingsByPool={standingsByPool}
+            qualifiersPerPool={tournament.settings.qualifiersPerPool}
+            matches={matches}
+            teams={teams}
+          />
+        </div>
+      )}
+      {tab === "tijden" && (
+        <div className="flex flex-col gap-4">
+          <p className="text-sm text-[var(--foreground)]/60">
+            Wijzig het tijdstip van een tijdslot; alle wedstrijden die op dat tijdstip gepland staan
+            verschuiven automatisch mee.
+          </p>
+          <TimeSlotEditor tId={tId} matches={matches} teams={teams} pools={pools} />
         </div>
       )}
     </div>
